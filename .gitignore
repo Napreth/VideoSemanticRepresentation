@@ -210,4 +210,4 @@ __marimo__/
 # Binary Data
 data/raw/*
 data/slice/*
-data/features/*
+cache/*
