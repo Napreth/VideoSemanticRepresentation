@@ -2,6 +2,7 @@ import sys, os
 import time
 from datetime import timedelta
 import numpy as np
+import cupy as cp
 from .video import get_meta, frames
 from .cnn import cnn
 from .kernels import build_kernels
@@ -24,6 +25,7 @@ def main(argv):
     features = []
     for frame_block in frames(argv[0], block):
         feature = cnn(frame_block, kernels)
+        cp.cuda.Stream.null.synchronize()
         elapsed = time.monotonic() - start
         processed_frame = min(processed_frame + 30, meta['frame_count'])
         progress = processed_frame / meta['frame_count'] * 100
@@ -34,11 +36,11 @@ def main(argv):
               f"Frames {processed_frame - block + 1}-{processed_frame}")
         print(feature)
         features.append(feature)
-        
+
     dirname = os.path.dirname(argv[1])
     if dirname:
         os.makedirs(dirname, exist_ok=True)
-    np.save(argv[1], np.stack(features))
+    np.save(argv[1], cp.asnumpy(cp.stack(features)))
     total = time.monotonic() - start
     print(f"\nDone. Saved {len(features)} feature blocks to '{argv[1]}' "
           f"in {timedelta(seconds=int(total))}.")

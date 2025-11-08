@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import cupy as cp
 from contextlib import contextmanager
 
 @contextmanager
@@ -35,18 +36,18 @@ def frames(video_path: str, batch_size: int=1, offset: int=0):
             raise ValueError("Offset must be a non-negative integer smaller than total frame count.")
         cap.set(cv2.CAP_PROP_POS_FRAMES, offset)
 
-        flag = 0
         while True:
-            frame_list = []
+            frames_cpu = []
             for i in range(batch_size):
                 ret, frame = cap.read()
                 if not ret:
-                    flag = 1
                     break
                 # Convert to single-channel grayscale
                 gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
-                frame_list.append(gray_frame)
-            if frame_list:
-                yield np.array(frame_list)
-            if flag:
+                frames_cpu.append(gray_frame)
+            if frames_cpu:
+                frames_gpu = cp.asarray(np.stack(frames_cpu), dtype=cp.float32)
+                del frames_cpu
+                yield frames_gpu
+            else:
                 break

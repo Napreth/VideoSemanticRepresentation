@@ -6,27 +6,37 @@
 
 </div>
 
-## **项目简介**
+## **概览**
 
-**VideoSemanticRepresentation** 是一个用于视频语义特征提取的轻量级框架，通过自定义的三维卷积核对视频序列进行空间–时间分析，将视频转换为特征向量，用于视频检索、相似度分析与语义匹配等任务。
+**VideoSemanticRepresentation** 是一个用于视频语义特征提取的轻量级框架，通过自定义三维卷积核对视频序列进行时空分析，将视频转换为特征向量，可用于视频检索、相似度计算与语义匹配。
 
-该项目以 《Bad Apple!!》 视频为实验样例，实现了：
+实验样例基于《Bad Apple!!》，当前实现包含：
 
-- 视频帧级灰度化与分块处理
+- 帧级灰度化与 30 帧分块处理（可在 `src/__main__.py` 中修改 `block`）
+- 自定义 3D 卷积核（运动/形状/反相/边缘等）
+- 对卷积结果做有效区域均值聚合，得到每块的特征向量
 
-- 3D 卷积核的自定义与应用
+### **版本更新**
 
-- 卷积结果的均值聚合与特征向量输出
+v0.2.0 版本使用 CuPy 将计算迁移至 GPU，大幅度提升了计算速度。
 
-## **环境配置**
+---
 
-### Windows
+## **快速开始**
+
+### **环境要求**
+
+- Python 3.10+（因 NumPy 2.x / SciPy 1.16 要求）
+- NVIDIA GPU 与兼容的 CUDA 驱动（使用 CuPy 进行 GPU 计算）
+- 依赖见 `requirements.txt`
+
+### Windows（PowerShell）
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m src input.mp4 output.npy
+python -m src <输入视频路径> <输出npy路径>
 ```
 
 ### Linux/macOS
@@ -35,24 +45,36 @@ python -m src input.mp4 output.npy
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python3 -m src input.mp4 output.npy
+python3 -m src <输入视频路径> <输出npy路径>
 ```
 
-## 使用方法
-
-运行以下命令从输入视频中提取语义特征向量：
-
-- 第 1 个参数为传入视频的路径
-
-- 第 2 个参数为特征向量的保存路径
+示例：
 
 ```bash
 python3 -m src data/raw/badapple_4k60.mp4 data/features/badapple_4k60.npy
 ```
 
-输出文件为 NumPy 数组，可直接用于后续的相似度计算或检索任务。
+输出：保存为 NumPy 数组（`.npy`），形状为 `(块数, 7)`，其中 `块数 ≈ 总帧数 / 30`。
 
-## 数据准备
+---
+
+## **特征与卷积核**
+
+默认一共 7 维特征（来自 7 个卷积核）：
+
+1. 运动（左移）
+2. 运动（右移）
+3. 运动（上移）
+4. 运动（下移）
+5. 形状（Laplacian，三帧叠加）
+6. 全局反相（2 帧差分）
+7. 边缘（Sobel，三帧叠加）
+
+卷积采用 `cupyx.scipy.ndimage.convolve`，模式为 `constant`（零填充），然后对每个核的有效区域取均值作为该维特征。
+
+---
+
+## **数据准备**
 
 可使用 ffmpeg 生成视频数据，支持保留或去除音频。
 分段切片便于批量处理与检索实验。
@@ -61,15 +83,15 @@ python3 -m src data/raw/badapple_4k60.mp4 data/features/badapple_4k60.npy
 # 去除音频（可选）
 ffmpeg -i badapple_4k60.mp4 -c:v copy -an data/raw/badapple_4k60.mp4
 
-# 每 5 秒分片（尚未在项目中使用）
+# 每 5 秒切片（尚未在项目中使用）
 ffmpeg -i data/raw/badapple_4k60.mp4 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p \
--g 150 -keyint_min 150 -sc_threshold 0 \
--force_key_frames "expr:gte(t,n_forced*5)" -vsync cfr \
--f segment -segment_time 5 -segment_time_delta 0.01 -reset_timestamps 1 \
-data/slice/4k60_5s/s%03d.mp4
+  -g 150 -keyint_min 150 -sc_threshold 0 \
+  -force_key_frames "expr:gte(t,n_forced*5)" -vsync cfr \
+  -f segment -segment_time 5 -segment_time_delta 0.01 -reset_timestamps 1 \
+  data/slice/4k60_5s/s%03d.mp4
 ```
 
-## 数据下载
+## **数据下载**
 
 由于原始与切片视频体积较大，数据已上传至网盘：
 
@@ -85,32 +107,32 @@ data/slice/4k60_5s/s%03d.mp4
 - **Nextcloud：**
 [https://dav.napreth.com/index.php/s/BZpkp9487w4tWwQ](https://dav.napreth.com/index.php/s/BZpkp9487w4tWwQ)
 
-## 项目结构
+## **项目结构**
 
 ```
 VideoSemanticRepresentation/
 ├─ data/
 │  ├─ raw/                  # 原始视频
-│  ├─ slice/                # 视频切片（每5秒一段）
+│  ├─ slice/                # 视频切片（每 5 秒一段）
 │  └─ features/             # 输出特征 (.npy)
 ├─ src/
 │  ├─ __main__.py           # 主入口：python -m src
-│  ├─ video.py              # 视频读取与灰度化
-│  ├─ kernels.py            # 自定义3D卷积核
-│  ├─ cnn.py                # 卷积与特征聚合
+│  ├─ video.py              # 视频读取与灰度化（OpenCV -> CuPy）
+│  ├─ kernels.py            # 自定义 3D 卷积核
+│  ├─ cnn.py                # 3D 卷积与特征聚合
 │  └─ __init__.py           # 包信息
 ├─ docs/
-│  └─ README_EN.md          # 英文版说明文档
+│  └─ README_EN.md          # 英文文档
 ├─ requirements.txt
 ├─ README.md
 └─ LICENSE
 ```
 
-## 模块说明
+## **模块说明**
 
-|模块|功能|
-|---|---|
-|`src/video.py`|读取视频并按帧生成灰度图序列|
-|`src/kernels.py`|定义多种时空卷积核（运动、形状、边缘等）|
-|`src/cnn.py`|使用 SciPy 实现 3D 卷积与特征聚合|
-|`src/__main__.py`|程序主入口与进度控制|
+| 模块 | 功能 |
+| --- | --- |
+| `src/video.py` | 读取视频并按帧生成灰度图序列 |
+| `src/kernels.py` | 定义多种时空卷积核（运动、形状、边缘等） |
+| `src/cnn.py` | 使用 CuPy 实现 3D 卷积与特征聚合 |
+| `src/__main__.py` | 程序主入口与进度控制 |
