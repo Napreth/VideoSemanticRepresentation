@@ -28,13 +28,15 @@ def get_meta(video_path: str) -> dict:
             'duration': duration
         }
 
-def frames(video_path: str, batch_size: int=1, offset: int=0):
+def frames(video_path: str, duration, offset: float=0.0):
+    meta = get_meta(video_path)
+    batch_size = int(duration * meta['fps'])
     with capture(video_path) as cap:
         if not cap.isOpened():
             raise ValueError(f"Unable to open video file: {video_path}")
-        if not (isinstance(offset, int) and 0 <= offset < int(cap.get(cv2.CAP_PROP_FRAME_COUNT))):
-            raise ValueError("Offset must be a non-negative integer smaller than total frame count.")
-        cap.set(cv2.CAP_PROP_POS_FRAMES, offset)
+        if not (isinstance(offset, float) and 0 <= offset < meta['duration'] + 1e-3):
+            raise ValueError("Offset must be a non-negative float smaller than total frame count.")
+        cap.set(cv2.CAP_PROP_POS_FRAMES, offset * meta['fps'])
 
         while True:
             frames_cpu = []
