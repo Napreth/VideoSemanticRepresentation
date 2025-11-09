@@ -69,17 +69,14 @@ def _locate_segmen(F, Q):
     best_idx = int(cp.argmin(scores))
     return best_idx, float(scores[best_idx])
 
-def search(block: float, F: cp.ndarray, Q: cp.ndarray):
-    print(f"\nSearching segment in feature space...")
+def search(block: float, F, Q, filename: str):
     start_idx, score = _locate_segmen(F, Q)
     start_time = start_idx * block
     end_time = (start_idx + Q.shape[0]) * block
 
-    print(f"Best match time range: {start_time:.2f}s~{end_time:.2f}s")
-    print(f"Euclidean distance score: {score:.6f}")
-    return {
-        "index": start_idx,
-        "start_time": start_time,
-        "end_time": end_time,
-        "score": score
-    }
+    print(
+        f"Video: {filename}",
+        f"Best match time range: {start_time:.2f}s~{end_time:.2f}s",
+        f"Score: {score}",
+        sep='\t', end='\n\n'
+    )

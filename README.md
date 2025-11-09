@@ -18,6 +18,9 @@
 
 ### **版本记录**
 
+- **v1.0.0（2025-11-09）**  
+统一项目架构与命令行接口，完成特征提取、缓存与检索系统的正式版发布。
+
 - **v0.3.1（2025-11-09）**  
 修复视频哈希算法导致的缓存误命中问题，并改进缓存索引结构。
 
@@ -34,7 +37,7 @@
 
 ### **环境要求**
 
-- Python 3.10+（因 NumPy 2.x / SciPy 1.16 要求）
+- Python 3.10+
 - NVIDIA GPU 与兼容的 CUDA 驱动（使用 CuPy 进行 GPU 计算）
 - 依赖见 `requirements.txt`
 
@@ -44,7 +47,6 @@
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m src <参考视频路径> <查询视频路径>
 ```
 
 ### Linux/macOS
@@ -53,18 +55,39 @@ python -m src <参考视频路径> <查询视频路径>
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python3 -m src <参考视频路径> <查询视频路径>
+```
+
+### 用法
+
+1. **提取视频特征**
+
+提取单个或多个视频的语义特征向量（.npy 格式）：
+
+```bash
+python -m src feature <input_video1> [<input_video2> ...] [-o <output_path>]
 ```
 
 示例：
 
 ```bash
-python3 -m src data/raw/badapple_4k60.mp4 data/slice/4k60_5s/s012.mp4
+python -m src feature data/raw/badapple_4k60.mp4 -o data/features/badapple_4k60.npy
 ```
 
-运行后程序会打印匹配结果（最佳匹配起止时间与欧氏距离分数）。
+若命中缓存将自动复用；若提供 -o 参数，会将结果保存至指定目录或文件。
 
-特征会自动缓存到 `cache/` 目录，文件名包含视频首 100 字节的 `sha256` 与分块时长，例如：`cache/<sha256>_b0.5.npy`。若再次处理同一视频将直接复用缓存。
+2. **视频检索**
+
+比较参考视频与查询视频（或多个查询视频），定位最相似片段：
+
+```bash
+python -m src <reference_video> -q <query_video_1> [<query_video_2> ...]
+```
+
+程序将输出：
+
+- 匹配片段时间范围（秒）
+
+- 欧氏距离相似度得分
 
 ---
 
@@ -126,7 +149,7 @@ VideoSemanticRepresentation/
 │  ├─ slice/                # 视频切片（每 5 秒一段）
 │  └─ features/             # 输出特征 (.npy)
 ├─ src/
-│  ├─ __main__.py           # 主入口：python -m src（参考视频 vs 查询视频）
+│  ├─ __main__.py           # 主入口与参数处理：python -m src（参考视频 vs 查询视频）
 │  ├─ video.py              # 视频读取与灰度化（OpenCV -> CuPy）
 │  ├─ feature.py            # 卷积核构造、3D 卷积与特征聚合、缓存
 │  ├─ search.py             # 特征空间片段检索（滑窗 + 欧氏距离）

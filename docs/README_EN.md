@@ -17,6 +17,8 @@ The sample experiment is based on "Bad Apple!!". The current implementation incl
 - Mean aggregation over the valid region of convolution results to obtain a per‑block feature vector
 
 ### **Version History**
+**v1.0.0 (2025-11-09)**  
+Unified project architecture and command-line interface; finalized release of the feature extraction, caching, and retrieval system.
 
 **v0.3.1 (2025-11-09)**  
 Fixes cache mis-hits caused by video hashing and improves cache index structure.
@@ -44,7 +46,7 @@ Implements the core prototype of the video semantic representation framework.
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m src <reference_video_path> <query_video_path>
+python -m src feature <input_video1> [<input_video2> ...] [-o <output_path>]
 ```
 
 ### Linux/macOS
@@ -53,16 +55,33 @@ python -m src <reference_video_path> <query_video_path>
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python3 -m src <reference_video_path> <query_video_path>
+python3 -m src feature <input_video1> [<input_video2> ...] [-o <output_path>]
 ```
 
-Example:
+### Usage
+
+1. **Feature Extraction**
+
+Extract semantic feature vectors (.npy) for one or multiple videos:
 
 ```bash
-python3 -m src data/raw/badapple_4k60.mp4 data/slice/4k60_5s/s012.mp4
+python -m src feature data/raw/badapple_4k60.mp4 -o data/features/badapple_4k60.npy
 ```
 
-After running, the program prints the match result (best‑match start/end times and the Euclidean distance score).
+If a cache hit occurs it will be reused automatically; with `-o` the result is saved to the given directory or file.
+
+2. **Video Retrieval**
+
+Compare a reference video with one or multiple query videos and locate the most similar segment:
+
+```bash
+python -m src <reference_video> -q <query_video_1> [<query_video_2> ...]
+```
+
+The program outputs:
+
+- Matched segment time range (seconds)
+- Euclidean distance similarity score
 
 Features are automatically cached under `cache/`. The file name contains the SHA‑256 of the first 100 bytes of the video and the block duration, e.g., `cache/<sha256>_b0.5.npy`. The cache will be reused when processing the same video again.
 
@@ -125,7 +144,7 @@ VideoSemanticRepresentation/
 │  ├─ slice/                # Video slices (every 5 seconds)
 │  └─ features/             # Output features (.npy)
 ├─ src/
-│  ├─ __main__.py           # Entry point: python -m src (reference video vs query video)
+│  ├─ __main__.py           # Entry point & argument handling: python -m src (reference video vs query video)
 │  ├─ video.py              # Video reading & grayscale (OpenCV -> CuPy)
 │  ├─ feature.py            # Kernel construction, 3D convolution & feature aggregation, caching
 │  ├─ search.py             # Segment retrieval in feature space (sliding window + Euclidean distance)

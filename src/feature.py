@@ -195,7 +195,8 @@ def _extract(video_path: str, block: float):
         Feature tensor with shape (num_blocks, num_kernels).
     """
     meta = _get_meta(video_path)
-    print(f"Video: '{video_path}'",
+    video_name = Path(video_path).name
+    print(f"Video: '{video_name}'",
           f"Resolution: {meta['width']}x{meta['height']}",
           f"FPS: {int(meta['fps'])}",
           f"Total duration: {_format_time(meta['duration'])}",
@@ -210,12 +211,10 @@ def _extract(video_path: str, block: float):
         elapsed = time.monotonic() - start
         processed_duration = min(processed_duration + block, meta['duration'])
         progress = processed_duration / meta['duration'] * 100
-        msg = ("\n"
-               f"[{progress:.1f}%] "
+        msg = (f"[{progress:.1f}%] "
                f"Elapsed: {_format_time(elapsed)}, "
                f"ETA: {_format_time(elapsed / processed_duration * meta['duration'] - elapsed)}, "
                f"Duration {_format_time(processed_duration - block)}-{_format_time(processed_duration)}"
-               "\n"
                f"{feature_block}")
         print("\033[A\033[K" * roll_back, end='')
         print(msg)
@@ -267,9 +266,10 @@ def _load_cache(video_path: str, sha256: str, block: float):
             continue
         cache_path = cache_dir / f"{c['uuid']}.npy"
         if cache_path.exists():
+            video_name = Path(video_path).name
             print(
                 "Matched cache.",
-                f"Video: '{video_path}'",
+                f"Video: '{video_name}'",
                 f"sha256: {sha256}",
                 sep="\t",
             )
@@ -316,7 +316,7 @@ def _save_cache(video_path: str, sha256: str, block: float, feature):
     try:
         np.save(str(cache_path), cp.asnumpy(feature))
     except Exception as e:
-        print("[Warning] Failed to save feature file.")
+        print("[WARNING] Failed to save feature file.")
         return
     cache_idx = {}
     try:
@@ -326,7 +326,7 @@ def _save_cache(video_path: str, sha256: str, block: float, feature):
         with cache_idx_path.open('r', encoding="utf-8") as f:
             cache_idx = json.load(f)
     except Exception as e:
-        print("[Warning] Failed to open cache index.")
+        print("[WARNING] Failed to open cache index.")
         return
     entry = {
         "uuid": uid,
@@ -341,19 +341,20 @@ def _save_cache(video_path: str, sha256: str, block: float, feature):
             json.dump(cache_idx, f, indent=2, ensure_ascii=False)
         tmp_path.replace(cache_idx_path)
     except Exception as e:
-        print("[Warning] Failed to update cache index.")
+        print("[WARNING] Failed to update cache index.")
         return
 
+    video_name = Path(video_path).name
     print(
         "Saved new cache.",
-        f"Video: '{video_path}'",
+        f"Video: '{video_name}'",
         f"sha256: {sha256}",
         f"UUID: {uid}",
         sep="\t"
     )
 
 
-def get_feature(video_path: str, block: float, use_cache: bool=True, save_cache: bool=True):
+def get_feature(video_path: str, block: float, save_path: str=''):
     """
     Retrieve or compute semantic feature representation for a given video.
 
@@ -367,38 +368,40 @@ def get_feature(video_path: str, block: float, use_cache: bool=True, save_cache:
         Path to the target video file.
     block : float
         Duration (in seconds) of each processing block.
-    use_cache : bool, default=True
-        Whether to load cached feature vectors if available.
-    save_cache : bool, default=True
-        Whether to save computed features to the cache directory.
+    save_cache : str, default=''
+        Path to save the feature.
 
     Returns
     -------
     cupy.ndarray
         The computed or loaded feature tensor.
     """
-    if use_cache or save_cache:
-            size = os.path.getsize(video_path)
-            with open(video_path, 'rb') as video_file:
-                sha256 = hashlib.new('sha256')
-                if size < 12 * 1024:
-                    sha256.update(video_file.read())
-                else:
-                    sha256.update(video_file.read(4096))
-                    mid = (size // 2) - 2048
-                    video_file.seek(mid)
-                    sha256.update(video_file.read(4096))
-                    tail = size - 4096
-                    video_file.seek(tail)
-                    sha256.update(video_file.read(4096))
-                sha256 = sha256.hexdigest()
-    if use_cache:
-        cache =_load_cache(video_path, sha256, block)
-        if cache is not None:
-            return cache
-
-    feature = _extract(video_path, block)
-
-    if save_cache:
+    size = os.path.getsize(video_path)
+    with open(video_path, 'rb') as video_file:
+        sha256 = hashlib.new('sha256')
+        if size < 12 * 1024:
+            sha256.update(video_file.read())
+        else:
+            sha256.update(video_file.read(4096))
+            mid = (size // 2) - 2048
+            video_file.seek(mid)
+            sha256.update(video_file.read(4096))
+            tail = size - 4096
+            video_file.seek(tail)
+            sha256.update(video_file.read(4096))
+        sha256 = sha256.hexdigest()
+                
+    cache =_load_cache(video_path, sha256, block)
+    if cache is not None:
+        feature = cache
+    else:
+        feature = _extract(video_path, block)
         _save_cache(video_path, sha256, block, feature)
+    if save_path:
+        try:
+            np.save(save_path, cp.asnumpy(feature))
+            print(f"Saved feature of '{video_path}' to '{save_path}'.")
+        except Exception:
+            print(f"[ERROR] Fail to save feature of '{video_path}'.")
+    print()
     return feature
