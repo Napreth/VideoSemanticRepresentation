@@ -17,11 +17,20 @@ Main Responsibilities
 
 import time
 from pathlib import Path
+import json
 import hashlib
 import numpy as np
 import cupy as cp
 from cupyx.scipy.ndimage import convolve
 from .video import _get_meta, frames
+
+try:
+    from uuid import uuid7 as gen_uuid
+except Exception:
+    try:
+        from uuid6 import uuid7 as gen_uuid
+    except Exception:
+        from uuid import uuid4 as gen_uuid
 
 
 # ==========================
@@ -160,8 +169,8 @@ def _format_time(total: float) -> str:
 # ==========================
 src_dir = Path(__file__).resolve().parent
 root_dir = src_dir.parent
-features_dir = root_dir / "cache"
-features_dir.mkdir(parents=True, exist_ok=True)
+cache_dir = root_dir / "cache"
+cache_dir.mkdir(parents=True, exist_ok=True)
 kernels = _build_kernels()
 
 def _extract(video_path: str, block: float):
@@ -217,6 +226,132 @@ def _extract(video_path: str, block: float):
     print(f"Done. Calculation has completed in {_format_time(total)}.\n")
     return feature
 
+def _load_cache(video_path: str, sha256: str, block: float):
+    """
+    Load a cached feature tensor from the cache index if available.
+
+    The function looks up a JSON cache index for a matching video SHA-256
+    and block size, verifies that the corresponding .npy file exists, and
+    returns its contents as a CuPy array. If the entry is stale or invalid,
+    it is automatically removed from the index.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the input video file.
+    sha256 : str
+        SHA-256 hash of the first bytes of the video file.
+    block : float
+        Duration (in seconds) of each processing block.
+
+    Returns
+    -------
+    cupy.ndarray or None
+        Loaded feature tensor if a valid cache is found, otherwise None.
+    """
+
+    cache_idx_path = cache_dir / "cache.json"
+    if not cache_idx_path.exists():
+        return None
+    try:
+        with cache_idx_path.open("r", encoding="utf-8") as f:
+            cache_idx = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    entries = cache_idx.get(sha256)
+    if not entries:
+        return None
+    for c in entries:
+        if c.get("block") != block:
+            continue
+        cache_path = cache_dir / f"{c['uuid']}.npy"
+        if cache_path.exists():
+            print(
+                "Matched cache.",
+                f"Video: '{video_path}'",
+                f"sha256: {sha256}",
+                sep="\t",
+            )
+            return cp.asarray(np.load(str(cache_path)))
+        # If the file does not exist, clean up invalid entries
+        print(f"Stale cache entry found: {cache_path.name}, removing...")
+        entries.remove(c)
+        if not entries:
+            cache_idx.pop(sha256, None)
+        tmp_path = cache_idx_path.with_suffix(".tmp")
+        try:
+            with tmp_path.open("w", encoding="utf-8") as f:
+                json.dump(cache_idx, f, indent=2)
+            tmp_path.replace(cache_idx_path)
+        except:
+            pass
+        break
+    return None
+
+def _save_cache(video_path: str, sha256: str, block: float, feature):
+    """
+    Save a computed feature tensor to disk and update the cache index.
+
+    Each entry is recorded in 'cache.json' with metadata including:
+      - UUID v7 or v4 (file name stem)
+      - block duration
+      - creation timestamp
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the input video file.
+    sha256 : str
+        SHA-256 hash of the first bytes of the video file.
+    block : float
+        Duration (in seconds) of each processing block.
+    feature : cupy.ndarray
+        Computed feature tensor to be saved.
+    """
+    cache_idx_path = cache_dir / "cache.json"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    uid = gen_uuid().hex
+    cache_path = cache_dir / f"{uid}.npy"
+    try:
+        np.save(str(cache_path), cp.asnumpy(feature))
+    except Exception as e:
+        print("[Warning] Failed to save feature file.")
+        return
+    cache_idx = {}
+    try:
+        if not cache_idx_path.exists():
+            with cache_idx_path.open('w', encoding="utf-8") as f:
+                f.write('{}')
+        with cache_idx_path.open('r', encoding="utf-8") as f:
+            cache_idx = json.load(f)
+    except Exception as e:
+        print("[Warning] Failed to open cache index.")
+        return
+    entry = {
+        "uuid": uid,
+        "block": block,
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+    }
+    entries = cache_idx.setdefault(sha256, [])
+    entries.append(entry)
+    tmp_path = cache_idx_path.with_suffix(".tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(cache_idx, f, indent=2, ensure_ascii=False)
+        tmp_path.replace(cache_idx_path)
+    except Exception as e:
+        print("[Warning] Failed to update cache index.")
+        return
+
+    print(
+        "Saved new cache.",
+        f"Video: '{video_path}'",
+        f"sha256: {sha256}",
+        f"UUID: {uid}",
+        sep="\t"
+    )
+
+
 def get_feature(video_path: str, block: float, use_cache: bool=True, save_cache: bool=True):
     """
     Retrieve or compute semantic feature representation for a given video.
@@ -246,17 +381,13 @@ def get_feature(video_path: str, block: float, use_cache: bool=True, save_cache:
             sha256 = hashlib.new('sha256')
             sha256.update(video_file.read(100))
             sha256 = sha256.hexdigest()
-            feature_file = str(features_dir / f"{sha256}_b{block}.npy")
     if use_cache:
-        if Path(feature_file).exists():
-            print("Matched cache.",
-                  f"Video: '{video_path}'",
-                  f"sha256: {sha256}",
-                  sep="\t")
-            return cp.asarray(np.load(feature_file))
+        cache =_load_cache(video_path, sha256, block)
+        if cache is not None:
+            return cache
 
     feature = _extract(video_path, block)
 
     if save_cache:
-        np.save(feature_file, cp.asnumpy(feature))
+        _save_cache(video_path, sha256, block, feature)
     return feature
