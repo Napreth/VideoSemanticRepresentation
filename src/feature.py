@@ -15,6 +15,7 @@ Main Responsibilities
 """
 
 
+import os
 import time
 from pathlib import Path
 import json
@@ -377,10 +378,20 @@ def get_feature(video_path: str, block: float, use_cache: bool=True, save_cache:
         The computed or loaded feature tensor.
     """
     if use_cache or save_cache:
-        with open(video_path, 'rb') as video_file:
-            sha256 = hashlib.new('sha256')
-            sha256.update(video_file.read(100))
-            sha256 = sha256.hexdigest()
+            size = os.path.getsize(video_path)
+            with open(video_path, 'rb') as video_file:
+                sha256 = hashlib.new('sha256')
+                if size < 12 * 1024:
+                    sha256.update(video_file.read())
+                else:
+                    sha256.update(video_file.read(4096))
+                    mid = (size // 2) - 2048
+                    video_file.seek(mid)
+                    sha256.update(video_file.read(4096))
+                    tail = size - 4096
+                    video_file.seek(tail)
+                    sha256.update(video_file.read(4096))
+                sha256 = sha256.hexdigest()
     if use_cache:
         cache =_load_cache(video_path, sha256, block)
         if cache is not None:

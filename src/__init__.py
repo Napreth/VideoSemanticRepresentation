@@ -18,14 +18,14 @@ Modules
 
 Author: Napreth
 Email:  dev@napreth.com
-Version: v0.3.1-dev
+Version: v0.3.1
 """
 
 
 
 __author__ = "Napreth"
 __email__ = "dev@napreth.com"
-__version__ = "0.3.1-dev"
+__version__ = "0.3.1"
 
 
 __all__ = [

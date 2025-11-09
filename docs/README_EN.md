@@ -18,22 +18,17 @@ The sample experiment is based on "Bad Apple!!". The current implementation incl
 
 ### **Version History**
 
-**v0.3.0 (2025‑11‑09)**
-Implements video retrieval and refactors the overall feature extraction architecture.  
-- Implemented segment‑level video retrieval based on Euclidean distance
-- Unified feature extraction logic into the `feature` module
-- Improved logging and cache directory structure (moved to `cache/`)
-- Added docstrings for each module
+**v0.3.1 (2025-11-09)**  
+Fixes cache mis-hits caused by video hashing and improves cache index structure.
 
-**v0.2.0 (2025‑11‑08)**
-Introduces GPU acceleration and improves feature extraction accuracy.
-- Migrated from NumPy/SciPy to CuPy for GPU acceleration
-- Changed feature computation to time‑normalized approach to support videos with different frame rates
+**v0.3.0 (2025-11-09)**  
+Implements video retrieval and refactors the feature extraction architecture.
 
-**v0.1.0 (2025‑11‑07)**
-Implements the prototype of the core video semantic representation framework.
-- Video feature extraction based on custom 3D convolution kernels
-- Basic pipeline for grayscaling and block processing
+**v0.2.0 (2025-11-08)**  
+Introduces GPU acceleration and enhances feature extraction accuracy.
+
+**v0.1.0 (2025-11-07)**  
+Implements the core prototype of the video semantic representation framework.
 
 ## **Quick Start**
 
