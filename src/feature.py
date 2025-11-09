@@ -1,15 +1,47 @@
+"""
+feature.py
+-----------
+
+Core feature extraction module for the VideoSemanticRepresentation framework.
+This module performs semantic feature extraction from videos using
+custom 3D convolution kernels implemented with CuPy for GPU acceleration.
+
+Main Responsibilities
+---------------------
+1. Construct and manage convolution kernels for motion, shape, and edge detection.
+2. Perform temporal-spatial 3D convolutions on video frame blocks.
+3. Aggregate convolution outputs into temporal semantic feature vectors.
+4. Handle feature caching for efficient re-computation avoidance.
+"""
+
+
 import time
-import sys
 from pathlib import Path
 import hashlib
 import numpy as np
 import cupy as cp
 from cupyx.scipy.ndimage import convolve
-from .video import get_meta, frames
+from .video import _get_meta, frames
 
 
+# ==========================
+#  Kernel Construction
+# ==========================
 def _build_kernels():
+    """
+    Construct a set of predefined 3D convolution kernels for video feature extraction.
+
+    Returns
+    -------
+    list of cupy.ndarray
+        A list of 3D kernels used for different spatial–temporal transformations:
+        - Motion kernels: detect frame-to-frame movements (up/down/left/right)
+        - Laplacian kernel: emphasize shape and local intensity change
+        - Inversion kernel: capture global contrast
+        - Sobel-like kernel: highlight emerging edges
+    """
     kernels = []
+
     # Motion: up, down, left, right
     # Left shift
     k_left = cp.zeros((3, 3, 3), cp.float32)
@@ -60,7 +92,28 @@ def _build_kernels():
     return kernels
 
 
+# ==========================
+#  CNN Core
+# ==========================
 def _cnn(data, kernels, fps: float):
+    """
+    Perform 3D convolution-based feature extraction on a block of video frames.
+
+    Parameters
+    ----------
+    data : cupy.ndarray
+        A 3D tensor representing a sequence of grayscale frames (T * H * W).
+    kernels : list of cupy.ndarray
+        The convolution kernels built by `_build_kernels()`.
+    fps : float
+        Frame rate of the video, used for time normalization.
+
+    Returns
+    -------
+    cupy.ndarray
+        A 1D array of aggregated feature values per kernel,
+        representing mean convolution responses per second.
+    """
     features = []
     T = data.shape[0]
 
@@ -80,7 +133,21 @@ def _cnn(data, kernels, fps: float):
 
     return cp.asarray(features, dtype=cp.float32)
 
+
 def _format_time(total: float) -> str:
+    """
+    Convert a float time value (in seconds) to a formatted time string.
+
+    Parameters
+    ----------
+    total : float
+        Total duration in seconds.
+
+    Returns
+    -------
+    str
+        Formatted time string in the format "H:MM:SS.CS" (centiseconds precision).
+    """
     total_cs = round(total * 100)
     hours = total_cs // 360000
     minutes = (total_cs // 6000) % 60
@@ -88,7 +155,9 @@ def _format_time(total: float) -> str:
     centiseconds = total_cs % 100
     return f"{hours}:{minutes:02}:{seconds:02}.{centiseconds:02}"
 
-
+# ==========================
+#  Feature Extraction
+# ==========================
 src_dir = Path(__file__).resolve().parent
 root_dir = src_dir.parent
 features_dir = root_dir / "cache"
@@ -96,7 +165,26 @@ features_dir.mkdir(parents=True, exist_ok=True)
 kernels = _build_kernels()
 
 def _extract(video_path: str, block: float):
-    meta = get_meta(video_path)
+    """
+    Extract temporal semantic features from a video file.
+
+    The video is processed in fixed-duration blocks, each passed through
+    the 3D convolution pipeline to generate feature vectors. Progress
+    and estimated remaining time are displayed dynamically in the console.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the input video file.
+    block : float
+        Duration (in seconds) of each processing block.
+
+    Returns
+    -------
+    cupy.ndarray
+        Feature tensor with shape (num_blocks, num_kernels).
+    """
+    meta = _get_meta(video_path)
     print(f"Video: '{video_path}'",
           f"Resolution: {meta['width']}x{meta['height']}",
           f"FPS: {int(meta['fps'])}",
@@ -130,6 +218,29 @@ def _extract(video_path: str, block: float):
     return feature
 
 def get_feature(video_path: str, block: float, use_cache: bool=True, save_cache: bool=True):
+    """
+    Retrieve or compute semantic feature representation for a given video.
+
+    This function manages caching by generating a hash key from the first 100 bytes
+    of the video file. If a cached feature exists, it is loaded directly; otherwise,
+    the feature is extracted and optionally saved.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the target video file.
+    block : float
+        Duration (in seconds) of each processing block.
+    use_cache : bool, default=True
+        Whether to load cached feature vectors if available.
+    save_cache : bool, default=True
+        Whether to save computed features to the cache directory.
+
+    Returns
+    -------
+    cupy.ndarray
+        The computed or loaded feature tensor.
+    """
     if use_cache or save_cache:
         with open(video_path, 'rb') as video_file:
             sha256 = hashlib.new('sha256')

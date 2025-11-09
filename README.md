@@ -8,19 +8,32 @@
 
 ## **概览**
 
-**VideoSemanticRepresentation** 是一个用于视频语义特征提取的轻量级框架，通过自定义三维卷积核对视频序列进行时空分析，将视频转换为特征向量，可用于视频检索、相似度计算与语义匹配。
+**VideoSemanticRepresentation** 是一个用于视频语义特征提取与片段检索的轻量级框架，通过自定义三维卷积核对视频序列进行时空分析，将视频转换为特征向量，并以欧氏距离为依据进行片段检索。
 
 实验样例基于《Bad Apple!!》，当前实现包含：
 
-- 帧级灰度化与 30 帧分块处理（可在 `src/__main__.py` 中修改 `block`）
+- 帧级灰度化与按固定时长分块
 - 自定义 3D 卷积核（运动/形状/反相/边缘等）
 - 对卷积结果做有效区域均值聚合，得到每块的特征向量
 
-### **版本更新**
+### **版本记录**
 
-v0.2.0 版本使用 CuPy 将计算迁移至 GPU，大幅度提升了计算速度。
+**v0.3.0（2025-11-09）**
+实现视频检索功能并重构整体特征提取架构。  
+- 实现了基于欧氏距离的片段级视频检索
+- 将特征提取逻辑统一整合进 `feature` 模块
+- 改进日志输出与缓存目录结构（迁移至 `cache/`）
+- 为每个模块添加了 `docstring`
 
----
+**v0.2.0（2025-11-08）**
+引入 GPU 加速并改进特征提取精度。
+- 从 NumPy/SciPy 迁移至 CuPy，实现 GPU 加速
+- 特征计算改为按时间归一化方式，支持不同帧率视频
+
+**v0.1.0（2025-11-07）**
+实现核心视频语义表征框架原型。
+- 基于自定义三维卷积核的视频特征提取
+- 实现灰度化与帧块处理的基础管线
 
 ## **快速开始**
 
@@ -36,7 +49,7 @@ v0.2.0 版本使用 CuPy 将计算迁移至 GPU，大幅度提升了计算速度
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m src <输入视频路径> <输出npy路径>
+python -m src <参考视频路径> <查询视频路径>
 ```
 
 ### Linux/macOS
@@ -45,16 +58,18 @@ python -m src <输入视频路径> <输出npy路径>
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python3 -m src <输入视频路径> <输出npy路径>
+python3 -m src <参考视频路径> <查询视频路径>
 ```
 
 示例：
 
 ```bash
-python3 -m src data/raw/badapple_4k60.mp4 data/features/badapple_4k60.npy
+python3 -m src data/raw/badapple_4k60.mp4 data/slice/4k60_5s/s012.mp4
 ```
 
-输出：保存为 NumPy 数组（`.npy`），形状为 `(块数, 7)`，其中 `块数 ≈ 总帧数 / 30`。
+运行后程序会打印匹配结果（最佳匹配起止时间与欧氏距离分数）。
+
+特征会自动缓存到 `cache/` 目录，文件名包含视频首 100 字节的 `sha256` 与分块时长，例如：`cache/<sha256>_b0.5.npy`。若再次处理同一视频将直接复用缓存。
 
 ---
 
@@ -70,7 +85,7 @@ python3 -m src data/raw/badapple_4k60.mp4 data/features/badapple_4k60.npy
 6. 全局反相（2 帧差分）
 7. 边缘（Sobel，三帧叠加）
 
-卷积采用 `cupyx.scipy.ndimage.convolve`，模式为 `constant`（零填充），然后对每个核的有效区域取均值作为该维特征。
+卷积采用 `cupyx.scipy.ndimage.convolve`，模式为 `constant`（零填充），然后对每个核的有效区域取均值作为该维特征。每个分块会得到一个 7 维向量，因此单个视频的特征张量形状约为 `(块数, 7)`，其中 `块数 ≈ 视频时长 / block`。
 
 ---
 
@@ -116,10 +131,10 @@ VideoSemanticRepresentation/
 │  ├─ slice/                # 视频切片（每 5 秒一段）
 │  └─ features/             # 输出特征 (.npy)
 ├─ src/
-│  ├─ __main__.py           # 主入口：python -m src
+│  ├─ __main__.py           # 主入口：python -m src（参考视频 vs 查询视频）
 │  ├─ video.py              # 视频读取与灰度化（OpenCV -> CuPy）
-│  ├─ kernels.py            # 自定义 3D 卷积核
-│  ├─ cnn.py                # 3D 卷积与特征聚合
+│  ├─ feature.py            # 卷积核构造、3D 卷积与特征聚合、缓存
+│  ├─ search.py             # 特征空间片段检索（滑窗 + 欧氏距离）
 │  └─ __init__.py           # 包信息
 ├─ docs/
 │  └─ README_EN.md          # 英文文档
@@ -133,6 +148,6 @@ VideoSemanticRepresentation/
 | 模块 | 功能 |
 | --- | --- |
 | `src/video.py` | 读取视频并按帧生成灰度图序列 |
-| `src/kernels.py` | 定义多种时空卷积核（运动、形状、边缘等） |
-| `src/cnn.py` | 使用 CuPy 实现 3D 卷积与特征聚合 |
-| `src/__main__.py` | 程序主入口与进度控制 |
+| `src/feature.py` | 定义/管理卷积核，执行 3D 卷积并聚合为时序特征，含缓存机制 |
+| `src/search.py` | 在参考视频特征中滑动窗口，按欧氏距离定位与查询视频最相似的片段 |
+| `src/__main__.py` | 程序主入口：计算两段视频的特征并执行检索 |

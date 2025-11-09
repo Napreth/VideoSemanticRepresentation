@@ -1,3 +1,15 @@
+"""
+__main__.py
+-----------
+
+Entry point for the VideoSemanticRepresentation framework.
+
+This script compares two video feature representations and locates
+the most similar segment between them. It is typically invoked as:
+
+    python -m src <reference_video> <query_video>
+"""
+
 import sys
 from pathlib import Path
 from .feature import get_feature

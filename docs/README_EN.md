@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Video Semantic Representation</h1>
-  <p>Napreth's video semantic representation and video retrieval experiment.</p>
+  <p>Napreth's video semantic representation and video retrieval experiments.</p>
 
   [简体中文](../README.md) / English
 
@@ -8,27 +8,40 @@
 
 ## **Overview**
 
-**VideoSemanticRepresentation** is a lightweight framework for extracting semantic feature vectors from videos. It performs spatio‑temporal analysis on frame sequences using custom 3D convolution kernels and converts each video (or segmented block of frames) into a feature vector that can be used for video retrieval, similarity computation, and semantic matching.
+**VideoSemanticRepresentation** is a lightweight framework for video semantic feature extraction and clip retrieval. It performs spatio‑temporal analysis on video sequences with custom 3D convolution kernels, converts videos into feature vectors, and uses Euclidean distance for clip retrieval.
 
-The current sample experiment is based on the video "Bad Apple!!" and implements:
+The sample experiment is based on "Bad Apple!!". The current implementation includes:
 
-* Frame‑level grayscaling and processing in blocks of 30 frames (can be changed via `block` in `src/__main__.py`)
-* Custom 3D convolution kernels (motion / shape / inversion / edge, etc.)
-* Mean aggregation over the valid convolution region to obtain a per‑block feature vector
+- Frame‑level grayscaling and chunking by fixed duration
+- Custom 3D convolution kernels (motion/shape/inversion/edge, etc.)
+- Mean aggregation over the valid region of convolution results to obtain a per‑block feature vector
 
-### **Version Update**
+### **Version History**
 
-Version **v0.2.0** migrates computation to the GPU using CuPy, significantly improving performance.
+**v0.3.0 (2025‑11‑09)**
+Implements video retrieval and refactors the overall feature extraction architecture.  
+- Implemented segment‑level video retrieval based on Euclidean distance
+- Unified feature extraction logic into the `feature` module
+- Improved logging and cache directory structure (moved to `cache/`)
+- Added docstrings for each module
 
----
+**v0.2.0 (2025‑11‑08)**
+Introduces GPU acceleration and improves feature extraction accuracy.
+- Migrated from NumPy/SciPy to CuPy for GPU acceleration
+- Changed feature computation to time‑normalized approach to support videos with different frame rates
+
+**v0.1.0 (2025‑11‑07)**
+Implements the prototype of the core video semantic representation framework.
+- Video feature extraction based on custom 3D convolution kernels
+- Basic pipeline for grayscaling and block processing
 
 ## **Quick Start**
 
 ### **Environment Requirements**
 
-* Python 3.10+ (required by NumPy 2.x / SciPy 1.16)
-* NVIDIA GPU and compatible CUDA driver (CuPy for GPU acceleration)
-* Dependencies listed in `requirements.txt`
+- Python 3.10+ (required by NumPy 2.x / SciPy 1.16)
+- NVIDIA GPU and compatible CUDA driver (CuPy for GPU computation)
+- See `requirements.txt` for dependencies
 
 ### Windows (PowerShell)
 
@@ -36,7 +49,7 @@ Version **v0.2.0** migrates computation to the GPU using CuPy, significantly imp
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m src <input_video_path> <output_npy_path>
+python -m src <reference_video_path> <query_video_path>
 ```
 
 ### Linux/macOS
@@ -45,38 +58,40 @@ python -m src <input_video_path> <output_npy_path>
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python3 -m src <input_video_path> <output_npy_path>
+python3 -m src <reference_video_path> <query_video_path>
 ```
 
 Example:
 
 ```bash
-python3 -m src data/raw/badapple_4k60.mp4 data/features/badapple_4k60.npy
+python3 -m src data/raw/badapple_4k60.mp4 data/slice/4k60_5s/s012.mp4
 ```
 
-Output: saved as a NumPy array (`.npy`) with shape `(num_blocks, 7)`, where `num_blocks ≈ total_frames / 30`.
+After running, the program prints the match result (best‑match start/end times and the Euclidean distance score).
+
+Features are automatically cached under `cache/`. The file name contains the SHA‑256 of the first 100 bytes of the video and the block duration, e.g., `cache/<sha256>_b0.5.npy`. The cache will be reused when processing the same video again.
 
 ---
 
 ## **Features & Kernels**
 
-By default there are 7 feature dimensions (from 7 kernels):
+There are 7 feature dimensions by default (from 7 kernels):
 
 1. Motion (left shift)
 2. Motion (right shift)
 3. Motion (up shift)
 4. Motion (down shift)
-5. Shape (Laplacian, 3‑frame stack)
+5. Shape (Laplacian, stacked over three frames)
 6. Global inversion (2‑frame difference)
-7. Edge (Sobel, 3‑frame stack)
+7. Edges (Sobel, stacked over three frames)
 
-Convolution uses `cupyx.scipy.ndimage.convolve` with mode `constant` (zero padding). For each kernel we take the mean over the valid region as that dimension's feature value.
+Convolution uses `cupyx.scipy.ndimage.convolve` with mode `constant` (zero padding). We then take the mean over the valid region of each kernel as that dimension's feature. Each block yields a 7‑D vector, so a single video's feature tensor has shape approximately `(num_blocks, 7)`, where `num_blocks ≈ video_duration / block`.
 
 ---
 
 ## **Data Preparation**
 
-You can use ffmpeg to generate video data, optionally removing audio. Segmenting the video facilitates batch processing and retrieval experiments.
+You can use ffmpeg to generate video data, with or without audio. Segmenting the video makes batch processing and retrieval experiments easier.
 
 ```bash
 # Remove audio (optional)
@@ -92,15 +107,18 @@ ffmpeg -i data/raw/badapple_4k60.mp4 -c:v libx264 -preset fast -crf 23 -pix_fmt 
 
 ## **Data Download**
 
-Because the raw and sliced videos are large, they are hosted on cloud storage:
+Because the raw and sliced videos are large, the data is hosted on cloud storage:
 
-* OneDrive:  
+- OneDrive:
   https://1drv.ms/f/c/3e28e8749a82a883/Ekz3ihbtSNNNpFDcCWJQBdwBSsE6zJu_0vGuy0GboR88_Q?e=9VvZCd
-* Baidu Netdisk:  
+
+- Baidu Netdisk:
   https://pan.baidu.com/s/1acP6LETBLVJZofjhxWkC4g?pwd=6rx5
-* Quark:  
+
+- Quark:
   https://pan.quark.cn/s/f9a0ab709f08
-* Nextcloud:  
+
+- Nextcloud:
   https://dav.napreth.com/index.php/s/BZpkp9487w4tWwQ
 
 ## **Project Structure**
@@ -112,10 +130,10 @@ VideoSemanticRepresentation/
 │  ├─ slice/                # Video slices (every 5 seconds)
 │  └─ features/             # Output features (.npy)
 ├─ src/
-│  ├─ __main__.py           # Entry point: python -m src
+│  ├─ __main__.py           # Entry point: python -m src (reference video vs query video)
 │  ├─ video.py              # Video reading & grayscale (OpenCV -> CuPy)
-│  ├─ kernels.py            # Custom 3D convolution kernels
-│  ├─ cnn.py                # 3D convolution & feature aggregation
+│  ├─ feature.py            # Kernel construction, 3D convolution & feature aggregation, caching
+│  ├─ search.py             # Segment retrieval in feature space (sliding window + Euclidean distance)
 │  └─ __init__.py           # Package info
 ├─ docs/
 │  └─ README_EN.md          # English documentation
@@ -128,7 +146,7 @@ VideoSemanticRepresentation/
 
 | Module | Function |
 | --- | --- |
-| `src/video.py` | Read video and produce grayscale frame sequence |
-| `src/kernels.py` | Define spatio‑temporal kernels (motion, shape, edges, etc.) |
-| `src/cnn.py` | 3D convolution using CuPy and feature aggregation |
-| `src/__main__.py` | Program entry point & progress control |
+| `src/video.py` | Read video and generate grayscale frame sequence |
+| `src/feature.py` | Define/manage kernels, perform 3D convolution and aggregate into temporal features, with caching |
+| `src/search.py` | Slide a window over reference features and use Euclidean distance to locate the most similar segment to the query |
+| `src/__main__.py` | Program entry point: compute features for two videos and perform retrieval |
